@@ -48,6 +48,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     };
     return Response.json(body);
   } catch (e) {
+    console.error("[upload] error:", e);
     const message = e instanceof Error ? e.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }

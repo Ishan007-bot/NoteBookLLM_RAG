@@ -44,8 +44,14 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     return result.toUIMessageStreamResponse({
       messageMetadata: () => ({ sources }),
+      onError: (error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error("[chat] stream error:", msg);
+        return msg;
+      },
     });
   } catch (e) {
+    console.error("[chat] error:", e);
     const message = e instanceof Error ? e.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }

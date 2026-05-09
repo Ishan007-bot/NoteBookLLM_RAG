@@ -1,7 +1,6 @@
 import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { QdrantVectorStore } from "@langchain/qdrant";
+import { QdrantClient } from "@qdrant/js-client-rest";
 import type { Document } from "@langchain/core/documents";
 import type { RetrievedChunk } from "@/lib/types";
 
@@ -16,26 +15,116 @@ import type { RetrievedChunk } from "@/lib/types";
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 const TOP_K = 4;
-const EMBEDDING_MODEL = "text-embedding-004";
+const EMBEDDING_MODEL = "gemini-embedding-001";
+const UPSERT_BATCH_SIZE = 64;
 
-function getEmbeddings() {
+interface ChunkMetadata {
+  loc?: { pageNumber?: number };
+  [k: string]: unknown;
+}
+
+interface QdrantPayload {
+  content: string;
+  page: number;
+}
+
+function getApiKey(): string {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_API_KEY is not set");
   }
-  return new GoogleGenerativeAIEmbeddings({
-    apiKey,
-    model: EMBEDDING_MODEL,
-  });
+  return apiKey;
 }
 
-function getQdrantConfig() {
+function getQdrantClient(): QdrantClient {
   const url = process.env.QDRANT_URL;
   if (!url) {
     throw new Error("QDRANT_URL is not set");
   }
   const apiKey = process.env.QDRANT_API_KEY || undefined;
-  return { url, apiKey };
+  return new QdrantClient({ url, apiKey, checkCompatibility: false });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Wrap fetch with exponential backoff retries on 429 (rate limit) and 503.
+// Respects Retry-After header when present. Backoff caps at 30s per attempt.
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 5): Promise<Response> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 && res.status !== 503) return res;
+    if (attempt === maxAttempts - 1) return res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, 30000)
+      : Math.min(2000 * 2 ** attempt, 30000);
+    await sleep(backoffMs);
+  }
+  return fetch(url, init);
+}
+
+// Embed a single chunk via Gemini's embedContent endpoint.
+// Used for queries (single text in, single vector out) and as a fallback
+// when batch embedding fails for a particular batch.
+async function embedSingle(text: string, taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[]> {
+  const apiKey = getApiKey();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
+  const res = await fetchWithRetry(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: `models/${EMBEDDING_MODEL}`,
+      content: { parts: [{ text }] },
+      taskType,
+    }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`Gemini embed ${res.status}: ${errBody.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { embedding?: { values?: number[] } };
+  const values = data.embedding?.values;
+  if (!values || values.length === 0) {
+    throw new Error("empty embedding");
+  }
+  return values;
+}
+
+// Embed multiple chunks in a single batchEmbedContents call.
+// Returns null for any chunk whose embedding failed (so caller can fall back).
+// Note: Gemini fails the entire batch if any input is bad, so we filter empty
+// chunks upstream and fall back to individual calls if a batch returns empty.
+async function embedBatch(texts: string[]): Promise<(number[] | null)[]> {
+  const apiKey = getApiKey();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:batchEmbedContents?key=${apiKey}`;
+  const res = await fetchWithRetry(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: texts.map((text) => ({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text }] },
+        taskType: "RETRIEVAL_DOCUMENT",
+      })),
+    }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`Gemini batch embed ${res.status}: ${errBody.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { embeddings?: { values?: number[] }[] };
+  const embeddings = data.embeddings ?? [];
+  // If batch failed silently (returned empty array despite 200), return all nulls
+  if (embeddings.length !== texts.length) {
+    return new Array(texts.length).fill(null);
+  }
+  return embeddings.map((e) => (e.values && e.values.length > 0 ? e.values : null));
+}
+
+function getPageNumber(metadata: ChunkMetadata): number {
+  return metadata.loc?.pageNumber ?? 0;
 }
 
 export async function loadAndChunkPdf(
@@ -48,18 +137,85 @@ export async function loadAndChunkPdf(
     chunkSize: CHUNK_SIZE,
     chunkOverlap: CHUNK_OVERLAP,
   });
-  const chunks = await splitter.splitDocuments(pageDocs);
+  const rawChunks = await splitter.splitDocuments(pageDocs);
+
+  // Drop chunks that are empty/whitespace-only (cover pages, separator pages,
+  // OCR artifacts) — Gemini rejects empty content.
+  const chunks = rawChunks.filter((c) => c.pageContent.trim().length > 0);
 
   return { chunks, pages: pageDocs.length };
 }
 
 export async function indexChunks(chunks: Document[], collectionName: string): Promise<void> {
-  const embeddings = getEmbeddings();
-  const config = getQdrantConfig();
-  await QdrantVectorStore.fromDocuments(chunks, embeddings, {
-    ...config,
-    collectionName,
+  // Embed in batches (one HTTP request per ~32 chunks) and pace them to stay
+  // under Gemini free-tier limits (100 RPM, 1500 RPD on gemini-embedding-001).
+  // If a batch fails, fall back to single calls (also paced). fetchWithRetry
+  // handles 429/503 with backoff up to 30s per attempt.
+  const EMBED_BATCH_SIZE = 32;
+  const INTER_BATCH_DELAY_MS = 1500;
+  const INTER_SINGLE_DELAY_MS = 700;
+  const records: { content: string; page: number; vector: number[] }[] = [];
+  let dim = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+    if (i > 0) await sleep(INTER_BATCH_DELAY_MS);
+
+    const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
+    let vectors: (number[] | null)[];
+    try {
+      vectors = await embedBatch(batch.map((c) => c.pageContent));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[indexChunks] batch ${i}-${i + batch.length} failed (${msg}); falling back to single calls`);
+      vectors = new Array(batch.length).fill(null);
+    }
+
+    for (let j = 0; j < batch.length; j++) {
+      const chunk = batch[j];
+      let vector = vectors[j];
+      if (!vector) {
+        // Pace the fallback single calls — they're firing right after the
+        // batch already failed, so the API window is tight.
+        await sleep(INTER_SINGLE_DELAY_MS);
+        try {
+          vector = await embedSingle(chunk.pageContent, "RETRIEVAL_DOCUMENT");
+        } catch (e) {
+          skipped += 1;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`[indexChunks] skipped chunk (page ${getPageNumber(chunk.metadata as ChunkMetadata)}): ${msg}`);
+          continue;
+        }
+      }
+      if (dim === 0) dim = vector.length;
+      records.push({
+        content: chunk.pageContent,
+        page: getPageNumber(chunk.metadata as ChunkMetadata),
+        vector,
+      });
+    }
+  }
+
+  if (records.length === 0) {
+    throw new Error("All chunks failed to embed");
+  }
+  if (skipped > 0) {
+    console.warn(`[indexChunks] skipped ${skipped}/${chunks.length} chunks; indexing ${records.length}`);
+  }
+
+  const client = getQdrantClient();
+  await client.createCollection(collectionName, {
+    vectors: { size: dim, distance: "Cosine" },
   });
+
+  for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
+    const batch = records.slice(i, i + UPSERT_BATCH_SIZE).map((r, idx) => ({
+      id: i + idx,
+      vector: r.vector,
+      payload: { content: r.content, page: r.page } satisfies QdrantPayload,
+    }));
+    await client.upsert(collectionName, { points: batch, wait: true });
+  }
 }
 
 export async function retrieveContext(
@@ -67,23 +223,21 @@ export async function retrieveContext(
   collectionName: string,
   k: number = TOP_K
 ): Promise<RetrievedChunk[]> {
-  const embeddings = getEmbeddings();
-  const config = getQdrantConfig();
-  const store = await QdrantVectorStore.fromExistingCollection(embeddings, {
-    ...config,
-    collectionName,
+  const vector = await embedSingle(query, "RETRIEVAL_QUERY");
+  const client = getQdrantClient();
+  const results = await client.search(collectionName, {
+    vector,
+    limit: k,
+    with_payload: true,
   });
-  const results = await store.similaritySearchWithScore(query, k);
-  return results.map(([doc, score]) => ({
-    content: doc.pageContent,
-    page: extractPageNumber(doc),
-    score,
-  }));
-}
-
-function extractPageNumber(doc: Document): number {
-  const meta = doc.metadata as { loc?: { pageNumber?: number } };
-  return meta.loc?.pageNumber ?? 0;
+  return results.map((r) => {
+    const payload = (r.payload ?? {}) as Partial<QdrantPayload>;
+    return {
+      content: payload.content ?? "",
+      page: payload.page ?? 0,
+      score: r.score ?? 0,
+    };
+  });
 }
 
 export function buildSystemPrompt(chunks: RetrievedChunk[]): string {
