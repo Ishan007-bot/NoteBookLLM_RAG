@@ -14,14 +14,17 @@ export function UploadView({ onUploaded }: UploadViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState<string>("");
 
+  const ACCEPTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"];
+
   async function handleFile(file: File) {
     setError(null);
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Only PDF files are supported.");
+    const lower = file.name.toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(`.${ext}`))) {
+      setError(`Unsupported file type. Use: ${ACCEPTED_EXTENSIONS.join(", ")}.`);
       return;
     }
     setUploading(true);
-    setProgressMsg("Uploading & indexing — this can take 10-60 seconds for large PDFs…");
+    setProgressMsg("Uploading & indexing — this can take 10-60 seconds for large documents…");
 
     try {
       const fd = new FormData();
@@ -45,10 +48,10 @@ export function UploadView({ onUploaded }: UploadViewProps) {
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-xl text-center">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Chat with your PDF
+          Chat with your document
         </h1>
         <p className="mt-3 text-sm text-[--color-muted-foreground] sm:text-base">
-          Upload any PDF and ask questions about it. Answers are grounded in the document with page citations — no hallucinations.
+          Upload a PDF, Word doc, text file, or CSV and ask questions about it. Answers are grounded in the document with page citations — no hallucinations.
         </p>
 
         <label
@@ -84,16 +87,16 @@ export function UploadView({ onUploaded }: UploadViewProps) {
             />
           </svg>
           <span className="mt-3 text-sm font-medium">
-            {uploading ? "Processing…" : "Drop a PDF here, or click to choose"}
+            {uploading ? "Processing…" : "Drop a file here, or click to choose"}
           </span>
           <span className="mt-1 text-xs text-[--color-muted-foreground]">
-            Max 25 MB
+            PDF, DOCX, TXT, MD, CSV · max 25 MB
           </span>
           <input
             ref={inputRef}
             id="pdf-input"
             type="file"
-            accept="application/pdf,.pdf"
+            accept=".pdf,.docx,.txt,.md,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv"
             className="hidden"
             disabled={uploading}
             onChange={(e) => {

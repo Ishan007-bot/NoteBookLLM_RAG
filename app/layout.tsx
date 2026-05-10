@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NotebookRAG — Chat with your PDFs",
+  title: "NotebookRAG — Chat with your documents",
   description:
-    "Upload a PDF and ask questions about it. Answers are grounded in the document, with page citations.",
+    "Upload a PDF, Word doc, text file, or CSV and ask questions about it. Answers are grounded in the document, with page citations.",
 };
 
 export default function RootLayout({

@@ -188,7 +188,7 @@ function EmptyState({ filename }: { filename: string }) {
     <div className="rounded-lg border border-dashed border-[--color-border] p-6 text-center">
       <p className="text-sm font-medium">Ready to chat with {filename}</p>
       <p className="mt-1 text-xs text-[--color-muted-foreground]">
-        Try asking: &ldquo;What is this document about?&rdquo; or &ldquo;Summarise the main points.&rdquo;
+        Try asking: &ldquo;What is this about?&rdquo; or &ldquo;Summarise the main points.&rdquo;
       </p>
     </div>
   );
