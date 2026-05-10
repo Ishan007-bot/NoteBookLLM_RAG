@@ -158,6 +158,17 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
               rows={1}
               className="min-h-[24px] flex-1 resize-none bg-transparent text-[0.95rem] leading-snug text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none"
               disabled={isBusy}
+              // Opt out of writing-assistant browser extensions (Grammarly,
+              // LanguageTool, ProWritingAid) that inject overlay badges and
+              // mangle our input styling. The data-* attributes are the
+              // documented escape hatches for each respective extension.
+              data-gramm="false"
+              data-gramm_editor="false"
+              data-enable-grammarly="false"
+              data-lt-active="false"
+              autoCorrect="off"
+              autoCapitalize="sentences"
+              spellCheck={true}
             />
             {isBusy ? (
               <button type="button" onClick={() => stop()} className="btn-ghost shrink-0">
