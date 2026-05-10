@@ -1,5 +1,7 @@
 # NotebookRAG — Chat with your documents
 
+> **Live Link:** [note-book-llm-rag-ebon.vercel.app](https://note-book-llm-rag-ebon.vercel.app/) · **Source:** [github.com/Ishan007-bot/NoteBookLLM_RAG](https://github.com/Ishan007-bot/NoteBookLLM_RAG)
+
 A NotebookLM-style web app that lets you upload a document (PDF, Word, text, markdown, or CSV) and ask questions about it. Answers are grounded in the document and cite specific page or row numbers — when the document doesn't contain an answer, the model says so explicitly instead of hallucinating.
 
 Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant vector DB, and the Vercel AI SDK.
@@ -133,18 +135,21 @@ QDRANT_API_KEY=      # blank for local Docker, required for Qdrant Cloud
 
 ## Deployment
 
-The app is designed for serverless (Vercel) — `pdf-parse` is declared in `serverExternalPackages`, the upload route uses the Node runtime with `maxDuration = 60`, and chunking happens entirely in memory (no disk writes).
+A working deployment is live at **[note-book-llm-rag-ebon.vercel.app](https://note-book-llm-rag-ebon.vercel.app/)**.
 
-### Deploy to Vercel + Qdrant Cloud
+The app is designed for serverless (Vercel) — PDF parsing uses [`unpdf`](https://github.com/unjs/unpdf) (no browser-API polyfills), the upload route uses the Node runtime with `maxDuration = 60`, and chunking happens entirely in memory (no disk writes).
 
-1. Sign up at https://cloud.qdrant.io and create a free-tier cluster (1 GB RAM, ~1M vectors). Pick a region close to Vercel's default (e.g. `us-east`).
+### Deploy your own — Vercel + Qdrant Cloud
+
+1. Sign up at https://cloud.qdrant.io and create a **free-tier** cluster (1 GB RAM, ~1M vectors). Pick **AWS / `us-east-1`** to match Vercel's default region for lowest latency.
 2. Copy the cluster URL and create an API key.
 3. Push to GitHub, then import the repo at https://vercel.com/new.
-4. Set the four environment variables in Vercel project settings:
+4. Set the environment variables in Vercel project settings — at minimum:
    - `GROQ_API_KEY`
    - `GOOGLE_API_KEY`
-   - `QDRANT_URL` (your Qdrant Cloud URL)
+   - `QDRANT_URL` (your Qdrant **Cloud** URL — not localhost)
    - `QDRANT_API_KEY` (your Qdrant Cloud API key)
+   - Optionally `GROQ_API_KEY_2`, `_3`, `GOOGLE_API_KEY_2`, `_3` for backup-key rotation
 5. Deploy.
 
 ## Project layout
@@ -160,18 +165,20 @@ notebook-rag/
 │  └─ globals.css          # Tailwind + theme tokens
 ├─ components/
 │  ├─ upload-view.tsx      # Drag-drop upload zone with progress + errors
-│  └─ chat-view.tsx        # Streaming chat UI with collapsible sources
+│  ├─ chat-view.tsx        # Streaming chat UI with collapsible sources
+│  └─ background-decor.tsx # Editorial ornaments / atmospheric SVGs
 ├─ lib/
 │  ├─ rag.ts               # Chunking, embedding, indexing, retrieval, prompts
+│  ├─ api-keys.ts          # Multi-key rotation for Groq + Gemini
 │  └─ types.ts             # Shared types (UploadResponse, RetrievedChunk, ...)
-├─ next.config.ts          # serverExternalPackages: ['pdf-parse']
+├─ next.config.ts
 └─ .env.example            # Required env vars (committed; .env.local is gitignored)
 ```
 
 ## Limitations & notes
 
-- **Free-tier rate limits** — Gemini's free tier allows 100 RPM and 1500 RPD on `gemini-embedding-001`. Large PDFs (~500+ chunks) or rapid re-uploads can hit this. The pipeline pacing (1.5s between batches) keeps a single normal upload comfortably under the limit. For higher throughput, enable Gemini billing or swap to a different embedder.
-- **Image-only / scanned PDFs** — `WebPDFLoader` extracts text only; scanned-image PDFs without OCR will produce zero chunks and fail at upload with a clear error.
+- **Free-tier rate limits** — Gemini's free tier allows 100 RPM and 1500 RPD on `gemini-embedding-001`. Large documents (~500+ chunks) or rapid re-uploads can hit this. Pipeline pacing (1.5s between batches) keeps normal uploads comfortably under the limit; on persistent 429s the app rotates to the next configured backup API key automatically.
+- **Image-only / scanned PDFs** — `unpdf` extracts text only; scanned-image PDFs without OCR will produce zero chunks and fail at upload with a clear error.
 - **Per-session collections** — each upload creates a new Qdrant collection (`doc-{uuid}`). Old collections accumulate in Qdrant; in production, add a TTL/cleanup job or expire by collection age.
 - **No auth** — anyone with the URL can upload and query. Add NextAuth or similar before exposing publicly.
 
