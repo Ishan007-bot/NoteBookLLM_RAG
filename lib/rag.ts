@@ -3,6 +3,7 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import type { Document } from "@langchain/core/documents";
 import type { RetrievedChunk } from "@/lib/types";
+import { getGoogleKey, rotateGoogleKey, googleKeyCount } from "@/lib/api-keys";
 
 // Chunking strategy: RecursiveCharacterTextSplitter
 //   - chunkSize 1000 chars: large enough to preserve local context (a paragraph or two),
@@ -28,14 +29,6 @@ interface QdrantPayload {
   page: number;
 }
 
-function getApiKey(): string {
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("GOOGLE_API_KEY is not set");
-  }
-  return apiKey;
-}
-
 function getQdrantClient(): QdrantClient {
   const url = process.env.QDRANT_URL;
   if (!url) {
@@ -49,29 +42,55 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Wrap fetch with exponential backoff retries on 429 (rate limit) and 503.
-// Respects Retry-After header when present. Backoff caps at 30s per attempt.
-async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 5): Promise<Response> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status !== 429 && res.status !== 503) return res;
-    if (attempt === maxAttempts - 1) return res;
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
-      ? Math.min(retryAfter * 1000, 30000)
-      : Math.min(2000 * 2 ** attempt, 30000);
-    await sleep(backoffMs);
+// Build the Gemini API URL for a given model + endpoint, injecting the current key.
+function geminiUrl(endpoint: "embedContent" | "batchEmbedContents", apiKey: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:${endpoint}?key=${apiKey}`;
+}
+
+// Call Gemini with key rotation + exponential backoff.
+//   1. Try current key with up to 3 attempts (backoff 2s/4s/8s, capped 30s).
+//   2. On persistent 429/503, rotate to the next configured key and try again.
+//   3. After all keys cycle through, return the last response (caller decides).
+async function fetchGeminiWithRotation(
+  endpoint: "embedContent" | "batchEmbedContents",
+  init: RequestInit
+): Promise<Response> {
+  const totalKeys = Math.max(1, googleKeyCount());
+  let lastResponse: Response | null = null;
+
+  for (let keyAttempt = 0; keyAttempt < totalKeys; keyAttempt++) {
+    const apiKey = getGoogleKey();
+    const url = geminiUrl(endpoint, apiKey);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(url, init);
+      lastResponse = res;
+      if (res.status === 200) return res;
+      // Non-quota errors (4xx other than 429, or 5xx other than 503) — return now,
+      // rotation won't help for these.
+      if (res.status !== 429 && res.status !== 503) return res;
+
+      if (attempt < 2) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 30000)
+          : Math.min(2000 * 2 ** attempt, 30000);
+        await sleep(backoffMs);
+      }
+    }
+
+    // Current key exhausted after retries — rotate if we have another.
+    if (rotateGoogleKey() === null) break;
   }
-  return fetch(url, init);
+
+  return lastResponse!;
 }
 
 // Embed a single chunk via Gemini's embedContent endpoint.
 // Used for queries (single text in, single vector out) and as a fallback
 // when batch embedding fails for a particular batch.
 async function embedSingle(text: string, taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[]> {
-  const apiKey = getApiKey();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
-  const res = await fetchWithRetry(url, {
+  const res = await fetchGeminiWithRotation("embedContent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -97,9 +116,7 @@ async function embedSingle(text: string, taskType: "RETRIEVAL_DOCUMENT" | "RETRI
 // Note: Gemini fails the entire batch if any input is bad, so we filter empty
 // chunks upstream and fall back to individual calls if a batch returns empty.
 async function embedBatch(texts: string[]): Promise<(number[] | null)[]> {
-  const apiKey = getApiKey();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:batchEmbedContents?key=${apiKey}`;
-  const res = await fetchWithRetry(url, {
+  const res = await fetchGeminiWithRotation("batchEmbedContents", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
