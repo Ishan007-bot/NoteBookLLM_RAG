@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { streamText, convertToModelMessages, type UIMessage } from "ai";
-import { groq } from "@ai-sdk/groq";
+import { createGroq } from "@ai-sdk/groq";
 import { retrieveContext, buildSystemPrompt } from "@/lib/rag";
+import { getGroqKey, rotateGroqKey } from "@/lib/api-keys";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,8 @@ interface ChatRequestBody {
   sessionId: string;
   messages: UIMessage[];
 }
+
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -33,10 +36,15 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const sources = await retrieveContext(userQuery, sessionId, 4);
     const system = buildSystemPrompt(sources);
-
     const modelMessages = await convertToModelMessages(messages);
+
+    // Build a Groq client bound to the currently-active key. If a stream error
+    // surfaces a quota / 429, rotate to the next configured key so the user's
+    // next request uses a fresh one.
+    const groqClient = createGroq({ apiKey: getGroqKey() });
+
     const result = streamText({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groqClient(GROQ_MODEL),
       system,
       messages: modelMessages,
       temperature: 0.2,
@@ -47,12 +55,21 @@ export async function POST(req: NextRequest): Promise<Response> {
       onError: (error) => {
         const msg = error instanceof Error ? error.message : String(error);
         console.error("[chat] stream error:", msg);
+        // Detect quota / rate-limit / auth failures and rotate the Groq key
+        // so subsequent requests get a fresh one. The current request still
+        // fails — the user retries.
+        if (/(429|rate.?limit|quota|401|invalid.?api.?key)/i.test(msg)) {
+          rotateGroqKey();
+        }
         return msg;
       },
     });
   } catch (e) {
     console.error("[chat] error:", e);
     const message = e instanceof Error ? e.message : "Unknown error";
+    if (/(429|rate.?limit|quota|401|invalid.?api.?key)/i.test(message)) {
+      rotateGroqKey();
+    }
     return Response.json({ error: message }, { status: 500 });
   }
 }
