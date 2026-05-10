@@ -2,16 +2,29 @@ import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { Document } from "@langchain/core/documents";
-import { PDFParse } from "pdf-parse";
+import { createRequire } from "module";
 import mammoth from "mammoth";
 import type { RetrievedChunk } from "@/lib/types";
 import { getGoogleKey, rotateGoogleKey, googleKeyCount } from "@/lib/api-keys";
 
-// Inject pdf-parse statically so the WebPDFLoader doesn't have to use its
-// own dynamic import — Turbopack mangles `await import("pdf-parse")` and
-// causes "Failed to load pdf-parse" at runtime even when the module is
-// installed and externalised.
-const pdfParseStatic = async () => ({ isV2: true as const, PDFParse });
+// Inject pdf-parse via Node's createRequire so we bypass the dynamic-import
+// path that LangChain's WebPDFLoader uses by default (Turbopack mangles
+// `await import("pdf-parse")` and causes "Failed to load pdf-parse" at
+// runtime even when the module is installed and listed in
+// serverExternalPackages). Resolved lazily on first PDF upload — if pdf-parse
+// fails to load, the error happens inside the upload route's try/catch and
+// surfaces as JSON instead of crashing the route module at load time.
+let cachedPdfParse: { PDFParse: unknown } | null = null;
+function loadPdfParse(): { PDFParse: unknown } {
+  if (cachedPdfParse) return cachedPdfParse;
+  const nodeRequire = createRequire(import.meta.url);
+  cachedPdfParse = nodeRequire("pdf-parse") as { PDFParse: unknown };
+  return cachedPdfParse;
+}
+const pdfParseStatic = async () => {
+  const mod = loadPdfParse();
+  return { isV2: true as const, PDFParse: mod.PDFParse as never };
+};
 
 export const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"] as const;
 export type SupportedExtension = (typeof SUPPORTED_EXTENSIONS)[number];
