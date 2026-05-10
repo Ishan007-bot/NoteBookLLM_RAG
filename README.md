@@ -18,7 +18,7 @@ Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant ve
 
 ## Tech stack
 
-| Layer | Choice |
+| Layer | Choice | 
 |---|---|
 | Framework | Next.js 16 (App Router, Turbopack) on Node runtime |
 | LLM | `llama-3.3-70b-versatile` via Groq |
