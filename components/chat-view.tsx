@@ -61,17 +61,29 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
       {/* Document strip — sits beneath the site header. The filename is set
           large in serif; metadata is small caps; "new document" is a quiet
           ghost button on the right. */}
-      <div className="border-b border-[var(--rule)] bg-[var(--paper)]">
-        <div className="mx-auto flex w-full max-w-4xl items-end justify-between gap-6 px-6 py-5 sm:px-10">
+      <div className="relative border-b border-[var(--rule)] bg-[var(--paper)]">
+        {/* Thin accent gradient line at the top of the strip */}
+        <div
+          className="absolute inset-x-0 top-0 h-px"
+          style={{
+            background: "linear-gradient(to right, transparent, var(--accent), transparent)",
+            opacity: 0.5,
+          }}
+          aria-hidden
+        />
+        <div className="mx-auto flex w-full max-w-4xl items-end justify-between gap-6 px-6 py-6 sm:px-10">
           <div className="min-w-0 flex-1">
-            <p className="smallcaps mb-1.5">currently reading</p>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
+              <p className="smallcaps">currently reading</p>
+            </div>
             <h2
-              className="font-display truncate text-xl font-medium text-[var(--ink)] sm:text-2xl"
+              className="font-display truncate text-2xl font-medium tracking-[-0.015em] text-[var(--ink)] sm:text-[1.75rem]"
               title={meta.filename}
             >
               {meta.filename}
             </h2>
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--ink-faint)] tabular-nums">
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--ink-faint)] tabular-nums">
               <span>{meta.pages} {meta.pages === 1 ? "page" : "pages"}</span>
               <span aria-hidden>·</span>
               <span>{meta.chunkCount} chunks indexed</span>
@@ -120,10 +132,18 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
       {/* Composer — minimal, generously padded, with a thin top rule */}
       <form
         onSubmit={handleSubmit}
-        className="border-t border-[var(--rule)] bg-[var(--paper)]"
+        className="relative border-t border-[var(--rule)] bg-[var(--paper)]"
       >
-        <div className="mx-auto w-full max-w-3xl px-6 py-4 sm:px-10">
-          <div className="flex items-end gap-3 rounded-2xl border border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-3 transition-colors focus-within:border-[var(--accent)]">
+        <div
+          className="absolute inset-x-0 top-0 h-px"
+          style={{
+            background: "linear-gradient(to right, transparent, var(--accent), transparent)",
+            opacity: 0.4,
+          }}
+          aria-hidden
+        />
+        <div className="mx-auto w-full max-w-3xl px-6 py-5 sm:px-10">
+          <div className="card-paper flex items-end gap-3 px-4 py-3 transition-colors focus-within:!border-[var(--accent)]">
             <textarea
               ref={taRef}
               value={input}
@@ -251,11 +271,14 @@ function SourcesPanel({ sources }: { sources: RetrievedChunk[] }) {
           {sources.map((s, i) => (
             <li
               key={i}
-              className="group rounded-lg border border-[var(--rule)] bg-[var(--paper-deep)] p-3 transition-colors hover:border-[var(--ink-faint)]"
+              className="card-paper group p-4 transition-all hover:!border-[var(--accent)]"
             >
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="font-mono text-[0.7rem] text-[var(--ink-faint)]">
-                  [{i + 1}]&nbsp;&nbsp;Page {s.page}
+              <div className="mb-2 flex items-center justify-between">
+                <span className="inline-flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[0.65rem] font-medium text-[var(--accent)]">
+                    {i + 1}
+                  </span>
+                  <span className="smallcaps">Page {s.page}</span>
                 </span>
                 <span className="font-mono text-[0.7rem] text-[var(--ink-faint)] tabular-nums">
                   {s.score.toFixed(3)}
@@ -279,21 +302,33 @@ function EmptyState() {
     "What does it say about [a specific term]?",
   ];
   return (
-    <div className="fade-in rounded-xl border border-dashed border-[var(--rule)] bg-[var(--paper-deep)] p-8">
-      <p className="smallcaps mb-3">try asking</p>
-      <ul className="flex flex-col gap-1.5">
-        {examples.map((q) => (
-          <li
-            key={q}
-            className="font-display text-lg italic text-[var(--ink-soft)]"
-          >
-            &ldquo;{q}&rdquo;
-          </li>
-        ))}
-      </ul>
-      <p className="mt-5 text-xs text-[var(--ink-faint)]">
-        Answers will cite the page they came from. If the document doesn&rsquo;t cover something, NotebookRAG will say so explicitly instead of inventing.
-      </p>
+    <div className="card-paper fade-in relative overflow-hidden p-8">
+      {/* Decorative serif quote behind */}
+      <span
+        className="deco-glyph select-none"
+        aria-hidden
+        style={{ top: "-3rem", right: "-1rem", fontSize: "12rem", opacity: 0.05 }}
+      >
+        &ldquo;
+      </span>
+      <div className="relative">
+        <p className="smallcaps mb-4">try asking</p>
+        <ul className="flex flex-col gap-2.5">
+          {examples.map((q) => (
+            <li
+              key={q}
+              className="font-display text-lg italic leading-snug text-[var(--ink-soft)]"
+            >
+              <span className="text-[var(--accent)]">&ldquo;</span>
+              {q}
+              <span className="text-[var(--accent)]">&rdquo;</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-6 max-w-md text-xs leading-relaxed text-[var(--ink-faint)]">
+          Answers cite the page they came from. If the document doesn&rsquo;t cover something, NotebookRAG will say so explicitly instead of inventing.
+        </p>
+      </div>
     </div>
   );
 }

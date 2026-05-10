@@ -9,8 +9,9 @@
 
 :root {
   /* Surfaces */
-  --paper:       #faf8f2;  /* warm cream, the dominant ground */
-  --paper-deep:  #f3f0e4;  /* slightly recessed surface */
+  --paper:       #faf7ef;  /* warm cream, the dominant ground */
+  --paper-deep:  #f3efe2;  /* slightly recessed surface */
+  --paper-card:  #fbf9f3;  /* slight lift above paper */
   --ink:         #1a1814;  /* warm near-black, primary text */
   --ink-soft:    #4a4640;  /* secondary text */
   --ink-faint:   #84807a;  /* tertiary text / metadata */
@@ -21,11 +22,27 @@
   --accent:      #2d4a3e;
   --accent-hover: #3a5e4f;
   --accent-soft: #d8e2db;  /* tint for muted backgrounds */
-  --accent-ink:  #faf8f2;  /* text on accent surfaces */
+  --accent-glow: rgba(45, 74, 62, 0.14); /* for ambient washes */
+  --accent-ink:  #faf7ef;  /* text on accent surfaces */
+
+  /* Warm secondary tone for atmospheric layering */
+  --warm-glow:   rgba(196, 144, 76, 0.10);
+  --rose-glow:   rgba(176, 96, 96, 0.06);
 
   /* Functional */
   --danger:      #8b2f1a;
   --danger-soft: #f3dcd2;
+
+  /* Elevations — multi-layer soft shadows, paper-like */
+  --shadow-sm: 0 1px 0 rgba(26, 24, 20, 0.04);
+  --shadow-md:
+    0 1px 0 rgba(26, 24, 20, 0.04),
+    0 6px 14px -4px rgba(26, 24, 20, 0.06),
+    0 16px 40px -12px rgba(26, 24, 20, 0.08);
+  --shadow-lift:
+    0 1px 0 rgba(26, 24, 20, 0.04),
+    0 12px 24px -8px rgba(26, 24, 20, 0.10),
+    0 28px 60px -20px rgba(26, 24, 20, 0.14);
 
   /* Motion */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -36,6 +53,7 @@
   :root {
     --paper:       #14130f;
     --paper-deep:  #1c1a16;
+    --paper-card:  #1a1814;
     --ink:         #ece9dd;
     --ink-soft:    #b8b3a5;
     --ink-faint:   #837e72;
@@ -45,16 +63,31 @@
     --accent:      #6b9b7e;
     --accent-hover: #84b497;
     --accent-soft: #1f2a25;
+    --accent-glow: rgba(107, 155, 126, 0.16);
     --accent-ink:  #14130f;
+
+    --warm-glow:   rgba(196, 144, 76, 0.10);
+    --rose-glow:   rgba(176, 96, 96, 0.07);
 
     --danger:      #d97553;
     --danger-soft: #2a1c16;
+
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md:
+      0 1px 0 rgba(0, 0, 0, 0.3),
+      0 6px 14px -4px rgba(0, 0, 0, 0.4),
+      0 16px 40px -12px rgba(0, 0, 0, 0.5);
+    --shadow-lift:
+      0 1px 0 rgba(0, 0, 0, 0.3),
+      0 12px 24px -8px rgba(0, 0, 0, 0.5),
+      0 28px 60px -20px rgba(0, 0, 0, 0.6);
   }
 }
 
 @theme inline {
   --color-paper: var(--paper);
   --color-paper-deep: var(--paper-deep);
+  --color-paper-card: var(--paper-card);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-faint: var(--ink-faint);
@@ -82,19 +115,54 @@ html {
 }
 
 body {
+  position: relative;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "ss01", "cv11";
-  /* Subtle paper grain — barely perceptible noise overlay so flat colours feel
-     like material rather than pixels. SVG inlined to avoid a network request. */
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.08  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  background-attachment: fixed;
+  overflow-x: hidden;
+}
+
+/* Atmospheric layer — multiple radial gradient washes give the page a sense
+   of light source, depth, and warmth. Pinned via fixed pseudo-element so it
+   doesn't scroll. Three hot-spots create gentle visual movement. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 1100px 700px at 12% 8%, var(--accent-glow), transparent 55%),
+    radial-gradient(ellipse 900px 600px at 88% 12%, var(--warm-glow), transparent 50%),
+    radial-gradient(ellipse 1000px 700px at 95% 92%, var(--rose-glow), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 30% 95%, var(--accent-glow), transparent 55%);
+}
+
+/* Paper grain — barely perceptible noise, plus a fine dot grid for tactile
+   substance. The dot grid is so subtle it reads as "this surface has a finish"
+   rather than "there are dots". */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 1;
+  background-image:
+    /* Fine dot grid */
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 0),
+    /* Paper noise */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.08  0 0 0 0.045 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 22px 22px, 220px 220px;
+  background-position: 0 0, 0 0;
 }
 
 @media (prefers-color-scheme: dark) {
-  body {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.92  0 0 0 0 0.85  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  body::after {
+    background-image:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 0),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.92  0 0 0 0 0.85  0 0 0 0.035 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   }
 }
 
@@ -118,7 +186,6 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
 
-/* Focus state — subtle but unmistakable */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -152,9 +219,32 @@ body {
   line-height: 1.02;
 }
 
-/* Tabular figures for numbers in metadata */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Drop cap — first letter of a paragraph set in serif at large size, floating */
+.dropcap::first-letter {
+  font-family: var(--font-fraunces), serif;
+  font-size: 4.4em;
+  line-height: 0.85;
+  font-weight: 500;
+  float: left;
+  margin: 0.08em 0.08em -0.05em 0;
+  color: var(--accent);
+  font-variation-settings: "opsz" 144, "SOFT" 50;
+}
+
+/* Decorative giant character behind hero — used as a serif quotation mark */
+.deco-glyph {
+  position: absolute;
+  font-family: var(--font-fraunces), serif;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--accent);
+  opacity: 0.06;
+  pointer-events: none;
+  user-select: none;
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+  line-height: 0.7;
 }
 
 /* ---------------------------------------------------------------------------
@@ -165,38 +255,39 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes rise-soft {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fade {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
 @keyframes caret-blink {
   0%, 50%   { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
-
 @keyframes pulse-soft {
   0%, 100% { opacity: 0.35; }
   50%      { opacity: 1; }
 }
-
 @keyframes shimmer {
   0%   { background-position: -120% 0; }
   100% { background-position: 220% 0; }
+}
+@keyframes slow-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(8px, -10px); }
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
 }
 
 .rise { animation: rise 0.6s var(--ease-out) both; }
 .rise-soft { animation: rise-soft 0.4s var(--ease-out) both; }
 .fade-in { animation: fade 0.5s var(--ease-out) both; }
 
-/* Stagger children: each direct child animates in slightly after the previous.
-   Apply to a wrapper. */
 .stagger > *               { animation: rise 0.55s var(--ease-out) both; }
 .stagger > *:nth-child(1)  { animation-delay: 0.00s; }
 .stagger > *:nth-child(2)  { animation-delay: 0.08s; }
@@ -215,7 +306,7 @@ body {
   }
 }
 
-/* Streaming caret — drawn as a filled rectangle that blinks */
+/* Streaming caret */
 .caret::after {
   content: "";
   display: inline-block;
@@ -227,7 +318,7 @@ body {
   animation: caret-blink 1.05s steps(1) infinite;
 }
 
-/* "Thinking" three-dot indicator */
+/* Thinking dots */
 .thinking-dots span {
   display: inline-block;
   width: 5px; height: 5px;
@@ -239,23 +330,16 @@ body {
 .thinking-dots span:nth-child(2) { animation-delay: 0.18s; }
 .thinking-dots span:nth-child(3) { animation-delay: 0.36s; }
 
-/* Shimmer for loading skeleton text */
 .shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--rule-soft) 0%,
-    var(--rule) 50%,
-    var(--rule-soft) 100%
-  );
+  background: linear-gradient(90deg, var(--rule-soft) 0%, var(--rule) 50%, var(--rule-soft) 100%);
   background-size: 220% 100%;
   animation: shimmer 1.8s linear infinite;
 }
 
 /* ---------------------------------------------------------------------------
- * Components — small reusable bits expressed as classes for readability
+ * Decorative & component classes
  * ------------------------------------------------------------------------- */
 
-/* Hairline rule with end caps (a typographic detail you don't normally see) */
 .rule-fancy {
   display: flex;
   align-items: center;
@@ -269,7 +353,20 @@ body {
   background: var(--rule);
 }
 
-/* Pill button — primary */
+/* Asterism — three-dot ornamental divider used between sections */
+.asterism {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-fraunces), serif;
+  color: var(--ink-faint);
+}
+.asterism::before, .asterism::after {
+  content: "";
+  width: 60px;
+  height: 1px;
+  background: var(--rule);
+}
+
+/* Buttons */
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center;
   gap: 8px;
@@ -280,12 +377,13 @@ body {
   font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: -0.005em;
-  transition: background 200ms var(--ease-out), transform 120ms var(--ease-out);
+  transition: background 200ms var(--ease-out), transform 120ms var(--ease-out), box-shadow 200ms var(--ease-out);
   border: 1px solid var(--accent);
+  box-shadow: 0 1px 0 rgba(26, 24, 20, 0.08), 0 6px 14px -8px rgba(45, 74, 62, 0.4);
 }
-.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 1px 0 rgba(26, 24, 20, 0.08), 0 10px 20px -8px rgba(45, 74, 62, 0.5); }
 .btn-primary:active { transform: translateY(1px); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
 .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center;
@@ -301,7 +399,6 @@ body {
 }
 .btn-ghost:hover { background: var(--paper-deep); border-color: var(--ink-faint); }
 
-/* Decorative ornament — used as a separator near brand mark */
 .ornament {
   display: inline-block;
   width: 4px; height: 4px;
@@ -309,4 +406,51 @@ body {
   border-radius: 999px;
   vertical-align: middle;
   margin: 0 10px;
+}
+
+/* Card with paper-like depth — multi-layer shadow + subtle border */
+.card-paper {
+  background: var(--paper-card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 300ms var(--ease-out), transform 300ms var(--ease-out), border-color 300ms var(--ease-out);
+}
+.card-paper:hover {
+  box-shadow: var(--shadow-lift);
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--rule));
+}
+.card-paper-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* Accent gradient text — used very sparingly */
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover) 60%, var(--accent));
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Ruled-paper background — applied to chat conversation area for the
+   "writing on a page" feel. Lines spaced to align with our reading rhythm. */
+.ruled-bg {
+  background-image: linear-gradient(to bottom, transparent 31px, var(--rule-soft) 32px);
+  background-size: 100% 32px;
+  background-position: 0 8px;
+}
+
+/* Soft accent glow — used behind the brand wordmark */
+.brand-glow {
+  position: relative;
+}
+.brand-glow::before {
+  content: "";
+  position: absolute;
+  inset: -8px -16px;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+  z-index: -1;
+  pointer-events: none;
 }

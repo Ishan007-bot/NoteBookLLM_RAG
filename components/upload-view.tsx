@@ -27,7 +27,6 @@ export function UploadView({ onUploaded }: UploadViewProps) {
     setProgressMsg("Reading & chunking the document …");
 
     try {
-      // Show evolving progress copy so a multi-second wait doesn't feel dead.
       const t1 = setTimeout(() => setProgressMsg("Embedding chunks with Gemini …"), 2500);
       const t2 = setTimeout(() => setProgressMsg("Indexing in Qdrant …"), 8000);
       const t3 = setTimeout(() => setProgressMsg("Almost there — finalising …"), 15000);
@@ -52,27 +51,53 @@ export function UploadView({ onUploaded }: UploadViewProps) {
   }
 
   return (
-    <section className="flex flex-1 flex-col">
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-16 sm:px-10 sm:py-24">
-        <div className="stagger flex flex-col gap-10">
-          {/* Eyebrow */}
-          <p className="smallcaps">
-            <span className="text-[var(--accent)]">●</span>&nbsp;&nbsp;Document Q&amp;A · grounded · cited
-          </p>
+    <section className="relative flex flex-1 flex-col overflow-hidden">
+      {/* Decorative serif glyph — softly behind the hero, contained and faint */}
+      <span
+        className="deco-glyph hidden select-none sm:block"
+        aria-hidden
+        style={{
+          fontSize: "clamp(8rem, 14vw, 12rem)",
+          top: "3rem",
+          right: "1rem",
+          color: "var(--accent)",
+          opacity: 0.07,
+          fontStyle: "italic",
+          fontVariationSettings: '"opsz" 144',
+        }}
+      >
+        &ldquo;
+      </span>
 
-          {/* Headline */}
-          <h1 className="display-headline text-[clamp(2.5rem,6vw,4.25rem)] text-[var(--ink)]">
+      <div className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 py-12 sm:px-10 sm:py-16">
+        <div className="stagger flex flex-col gap-8">
+          {/* Eyebrow with status pill */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--rule)] bg-[var(--paper-card)] px-3 py-1 shadow-[var(--shadow-sm)]">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-50" style={{ animation: "glow-pulse 2.4s ease-in-out infinite" }} />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]" />
+              </span>
+              <span className="smallcaps text-[var(--ink)]">v1.0 — beta</span>
+            </span>
+            <span className="smallcaps">grounded · cited · honest</span>
+          </div>
+
+          {/* Headline — big serif statement with italic accent */}
+          <h1 className="display-headline relative text-[clamp(2.75rem,7vw,5rem)] text-[var(--ink)]">
             Read with{" "}
-            <span className="italic text-[var(--accent)]">precision.</span>
+            <span className="italic text-gradient">precision.</span>
             <br />
-            Ask anything.
+            <span className="text-[var(--ink-soft)]">Ask</span>{" "}
+            <span className="italic">anything.</span>
           </h1>
 
-          <p className="max-w-xl text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-            Upload a PDF, Word doc, text file, or spreadsheet. NotebookRAG indexes it page by page and answers your questions using only what&rsquo;s actually written — every claim cites the page it came from. If the document doesn&rsquo;t cover something, it says so plainly.
+          {/* Lead paragraph with drop cap */}
+          <p className="dropcap max-w-2xl text-[1.0625rem] leading-[1.75] text-[var(--ink-soft)]">
+            Upload a document and NotebookRAG indexes it page by page. Every answer is pulled directly from your text, with the relevant page numbers cited beneath it. When the document doesn&rsquo;t cover something, the model will say so plainly — instead of inventing.
           </p>
 
-          {/* Drop zone */}
+          {/* Drop zone — the focal interactive element, card-paper styled */}
           <DropZone
             uploading={uploading}
             dragOver={dragOver}
@@ -85,7 +110,6 @@ export function UploadView({ onUploaded }: UploadViewProps) {
             onPick={() => inputRef.current?.click()}
           />
 
-          {/* Hidden input */}
           <input
             ref={inputRef}
             type="file"
@@ -99,13 +123,10 @@ export function UploadView({ onUploaded }: UploadViewProps) {
             }}
           />
 
-          {/* Status / errors */}
           <div aria-live="polite" className="min-h-[1.5rem]">
             {progressMsg && (
               <p className="fade-in flex items-center gap-2 text-sm text-[var(--ink-soft)]">
-                <span className="thinking-dots inline-flex">
-                  <span /><span /><span />
-                </span>
+                <span className="thinking-dots inline-flex"><span /><span /><span /></span>
                 {progressMsg}
               </p>
             )}
@@ -116,22 +137,30 @@ export function UploadView({ onUploaded }: UploadViewProps) {
             )}
           </div>
 
-          {/* Three principles — tasteful trust signals */}
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--rule)] bg-[var(--rule)] sm:grid-cols-3">
+          {/* Asterism divider */}
+          <div className="asterism">
+            <span aria-hidden>※&nbsp;&nbsp;§&nbsp;&nbsp;※</span>
+          </div>
+
+          {/* Three principles — roman numerals + ornaments */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Principle
-              tag="01"
+              numeral="I"
               title="Grounded"
-              body="Answers are pulled from your document. No outside knowledge bleeds in."
+              body="Answers come from your document, not the model's training data."
+              icon={<IconGrounded />}
             />
             <Principle
-              tag="02"
+              numeral="II"
               title="Cited"
-              body="Every answer references the exact page or row it relied on."
+              body="Every answer references the page or row it relied on."
+              icon={<IconCited />}
             />
             <Principle
-              tag="03"
+              numeral="III"
               title="Honest"
-              body="If the document doesn&rsquo;t cover it, the model says so — never guesses."
+              body="If the document doesn't cover it, the model says so. Plainly."
+              icon={<IconHonest />}
             />
           </div>
         </div>
@@ -170,28 +199,38 @@ function DropZone({
         const file = e.dataTransfer.files?.[0];
         if (file) onDrop(file);
       }}
-      className={`group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-2xl border border-dashed px-8 py-14 text-center transition-all duration-300 ${
+      className={`group card-paper card-paper-lift relative flex w-full flex-col items-center justify-center gap-5 overflow-hidden px-8 py-16 text-center transition-all duration-300 ${
         dragOver
-          ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-          : "border-[var(--rule)] bg-[var(--paper-deep)] hover:border-[var(--ink-faint)]"
+          ? "!border-[var(--accent)] !bg-[var(--accent-soft)]"
+          : "hover:!border-[var(--accent)]"
       } ${uploading ? "pointer-events-none opacity-70" : "cursor-pointer"}`}
     >
-      {/* Decorative corner ticks — Swiss design tic */}
-      <CornerTicks />
+      {/* Border-dashed inner outline that pulses on dragover */}
+      <span
+        className={`pointer-events-none absolute inset-3 rounded-[10px] border border-dashed transition-colors duration-300 ${
+          dragOver ? "border-[var(--accent)]" : "border-[var(--rule)]"
+        }`}
+        aria-hidden
+      />
 
-      {/* Document glyph — custom, not a generic upload arrow */}
+      <CornerTicks active={dragOver} />
+
+      {/* Document glyph */}
       <DocumentMark active={dragOver || uploading} />
 
-      <div className="flex flex-col items-center gap-1">
-        <span className="font-display text-xl text-[var(--ink)]">
+      <div className="flex flex-col items-center gap-1.5">
+        <span className="font-display text-2xl text-[var(--ink)]">
           {uploading
             ? "Working …"
             : dragOver
               ? "Drop to upload"
-              : "Drop a document here"}
+              : "Drop a document"}
         </span>
         <span className="text-sm text-[var(--ink-faint)]">
-          or <span className="underline decoration-[var(--ink-faint)] decoration-dotted underline-offset-4 group-hover:text-[var(--accent)] group-hover:decoration-[var(--accent)]">click to browse</span>
+          or{" "}
+          <span className="underline decoration-[var(--ink-faint)] decoration-dotted underline-offset-4 transition-colors group-hover:text-[var(--accent)] group-hover:decoration-[var(--accent)]">
+            click to browse files
+          </span>
         </span>
       </div>
 
@@ -204,19 +243,22 @@ function DropZone({
             )}
           </span>
         ))}
-        <span className="ml-1 text-[var(--ink-faint)]">· max 25 MB</span>
+        <span className="ml-1">· max 25 MB</span>
       </div>
     </button>
   );
 }
 
-function CornerTicks() {
+function CornerTicks({ active }: { active: boolean }) {
+  const cls = `absolute h-3 w-3 transition-colors duration-300 ${
+    active ? "border-[var(--accent)]" : "border-[var(--ink-faint)]"
+  }`;
   return (
     <>
-      <span className="absolute left-3 top-3 h-3 w-3 border-l border-t border-[var(--ink-faint)]" />
-      <span className="absolute right-3 top-3 h-3 w-3 border-r border-t border-[var(--ink-faint)]" />
-      <span className="absolute bottom-3 left-3 h-3 w-3 border-b border-l border-[var(--ink-faint)]" />
-      <span className="absolute bottom-3 right-3 h-3 w-3 border-b border-r border-[var(--ink-faint)]" />
+      <span className={`${cls} left-3 top-3 border-l border-t`} />
+      <span className={`${cls} right-3 top-3 border-r border-t`} />
+      <span className={`${cls} bottom-3 left-3 border-b border-l`} />
+      <span className={`${cls} bottom-3 right-3 border-b border-r`} />
     </>
   );
 }
@@ -224,52 +266,104 @@ function CornerTicks() {
 function DocumentMark({ active }: { active: boolean }) {
   return (
     <svg
-      width="44"
-      height="52"
-      viewBox="0 0 44 52"
+      width="56"
+      height="64"
+      viewBox="0 0 56 64"
       fill="none"
-      className={`transition-transform duration-500 ${active ? "scale-110" : ""}`}
+      className={`transition-transform duration-500 ${active ? "scale-110 -rotate-3" : ""}`}
       aria-hidden
     >
-      {/* Back doc */}
+      {/* Back document */}
       <rect
         x="6"
         y="2"
-        width="28"
-        height="36"
-        rx="2"
-        className="stroke-[var(--ink-faint)]"
+        width="36"
+        height="46"
+        rx="2.5"
+        fill="var(--paper-card)"
+        className="stroke-[var(--ink-faint)] transition-colors"
         strokeWidth="1.25"
       />
-      {/* Front doc */}
-      <rect
-        x="11"
-        y="11"
-        width="28"
-        height="38"
-        rx="2"
-        fill="var(--paper)"
-        className="stroke-[var(--ink)]"
-        strokeWidth="1.25"
-      />
-      {/* Lines */}
-      <line x1="17" y1="22" x2="33" y2="22" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
-      <line x1="17" y1="28" x2="33" y2="28" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
-      <line x1="17" y1="34" x2="27" y2="34" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
-      {/* Accent dot */}
-      <circle cx="33" cy="42" r="3" fill="var(--accent)" />
+      {/* Front document */}
+      <g className="transition-transform duration-500" style={{ transform: active ? "translate(2px, 2px)" : undefined }}>
+        <rect
+          x="14"
+          y="14"
+          width="36"
+          height="48"
+          rx="2.5"
+          fill="var(--paper-card)"
+          className="stroke-[var(--ink)]"
+          strokeWidth="1.25"
+        />
+        {/* Folded corner detail */}
+        <path
+          d="M44 14 L50 20 L44 20 Z"
+          fill="var(--paper-deep)"
+          className="stroke-[var(--ink)]"
+          strokeWidth="1.25"
+          strokeLinejoin="round"
+        />
+        {/* Lines */}
+        <line x1="20" y1="28" x2="44" y2="28" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+        <line x1="20" y1="35" x2="44" y2="35" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+        <line x1="20" y1="42" x2="36" y2="42" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+        {/* Accent dot */}
+        <circle cx="42" cy="54" r="3.5" fill="var(--accent)" />
+      </g>
     </svg>
   );
 }
 
-function Principle({ tag, title, body }: { tag: string; title: string; body: string }) {
+function Principle({
+  numeral,
+  title,
+  body,
+  icon,
+}: {
+  numeral: string;
+  title: string;
+  body: string;
+  icon: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-2 bg-[var(--paper)] p-6">
-      <div className="flex items-baseline gap-3">
-        <span className="font-mono text-[0.7rem] text-[var(--ink-faint)]">{tag}</span>
-        <span className="font-display text-base text-[var(--ink)]">{title}</span>
+    <div className="card-paper card-paper-lift flex flex-col gap-3 p-6">
+      <div className="flex items-start justify-between">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+          {icon}
+        </div>
+        <span className="font-display text-sm italic text-[var(--ink-faint)]">{numeral}</span>
       </div>
+      <h3 className="font-display text-lg text-[var(--ink)]">{title}</h3>
       <p className="text-sm leading-relaxed text-[var(--ink-soft)]">{body}</p>
     </div>
+  );
+}
+
+function IconGrounded() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M8 1.5l5 2.25v4.5c0 3-2.25 5.25-5 6.25-2.75-1-5-3.25-5-6.25v-4.5L8 1.5z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+      <path d="M5.5 8l2 2 3-3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCited() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 3h7l3 3v7H3V3z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+      <path d="M10 3v3h3" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+      <path d="M5.5 9h5M5.5 11h3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconHonest() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M8 4.5v4M8 11v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
