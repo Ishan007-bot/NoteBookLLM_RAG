@@ -10,13 +10,17 @@ export const maxDuration = 60;
 interface ChatRequestBody {
   sessionId: string;
   messages: UIMessage[];
+  // Citation unit label, derived from the document type on the client (e.g.
+  // "Page" for PDFs, "Row" for CSVs, "Section" for plain text). Optional —
+  // defaults to "Page" if missing for backwards compat with older clients.
+  unit?: string;
 }
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    const { sessionId, messages } = (await req.json()) as ChatRequestBody;
+    const { sessionId, messages, unit } = (await req.json()) as ChatRequestBody;
 
     if (!sessionId || !Array.isArray(messages) || messages.length === 0) {
       return Response.json(
@@ -35,7 +39,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     const sources = await retrieveContext(userQuery, sessionId, 4);
-    const system = buildSystemPrompt(sources);
+    const system = buildSystemPrompt(sources, unit ?? "Page");
     const modelMessages = await convertToModelMessages(messages);
 
     // Build a Groq client bound to the currently-active key. If a stream error

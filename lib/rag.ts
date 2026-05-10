@@ -352,13 +352,13 @@ export async function retrieveContext(
   });
 }
 
-export function buildSystemPrompt(chunks: RetrievedChunk[]): string {
+export function buildSystemPrompt(chunks: RetrievedChunk[], unit: string = "Page"): string {
   if (chunks.length === 0) {
     return `You are a precise document Q&A assistant. The user has uploaded a document, but no relevant context was retrieved for this query. Reply exactly: "The document does not cover this."`;
   }
 
   const context = chunks
-    .map((c, i) => `[Source ${i + 1} | Page ${c.page}]\n${c.content}`)
+    .map((c, i) => `[Source ${i + 1} | ${unit} ${c.page}]\n${c.content}`)
     .join("\n\n---\n\n");
 
   return `You are a precise document Q&A assistant.
@@ -366,7 +366,7 @@ export function buildSystemPrompt(chunks: RetrievedChunk[]): string {
 STRICT RULES:
 - Answer ONLY using the CONTEXT below. Do not use outside knowledge.
 - If the answer is not contained in the context, reply exactly: "The document does not cover this."
-- Cite the page number(s) you used inline, e.g. "(Page 3)".
+- Cite the ${unit.toLowerCase()} number(s) you used inline, e.g. "(${unit} 3)".
 - Be concise and direct.
 - Do not speculate, infer, or extrapolate beyond what the context states.
 

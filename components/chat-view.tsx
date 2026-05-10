@@ -12,6 +12,19 @@ interface ChatViewProps {
   onReset: () => void;
 }
 
+// Different document types use the page-number metadata field for different
+// things: PDFs really have pages; CSVs use it as a row index; DOCX/TXT/MD all
+// just have "1" since there's no native page concept. Pick a label that
+// matches what the underlying number actually means for the file type.
+function getUnitLabel(filename: string): { single: string; plural: string } {
+  const ext = filename.toLowerCase().split(".").pop();
+  if (ext === "csv") return { single: "Row", plural: "rows" };
+  if (ext === "txt" || ext === "md" || ext === "docx") {
+    return { single: "Section", plural: "sections" };
+  }
+  return { single: "Page", plural: "pages" };
+}
+
 export function ChatView({ meta, onReset }: ChatViewProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -21,9 +34,12 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        body: { sessionId: meta.sessionId },
+        body: {
+          sessionId: meta.sessionId,
+          unit: getUnitLabel(meta.filename).single,
+        },
       }),
-    [meta.sessionId]
+    [meta.sessionId, meta.filename]
   );
 
   const { messages, sendMessage, status, error, stop } = useChat<ChatUIMessage>({
@@ -47,6 +63,7 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
 
   const isBusy = status === "submitted" || status === "streaming";
   const lastAssistantId = messages.findLast?.((m) => m.role === "assistant")?.id;
+  const unit = getUnitLabel(meta.filename);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,7 +101,7 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
               {meta.filename}
             </h2>
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--ink-faint)] tabular-nums">
-              <span>{meta.pages} {meta.pages === 1 ? "page" : "pages"}</span>
+              <span>{meta.pages} {meta.pages === 1 ? unit.single.toLowerCase() : unit.plural}</span>
               <span aria-hidden>·</span>
               <span>{meta.chunkCount} chunks indexed</span>
               <span aria-hidden>·</span>
@@ -110,6 +127,7 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
               key={m.id}
               message={m}
               streaming={isBusy && m.id === lastAssistantId && m.role === "assistant"}
+              unit={unit}
             />
           ))}
 
@@ -213,9 +231,11 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
 function MessageBlock({
   message,
   streaming,
+  unit,
 }: {
   message: ChatUIMessage;
   streaming: boolean;
+  unit: { single: string; plural: string };
 }) {
   const isUser = message.role === "user";
   const text = message.parts
@@ -248,12 +268,18 @@ function MessageBlock({
           {streaming && <span className="caret" aria-hidden />}
         </p>
       </div>
-      {sources.length > 0 && <SourcesPanel sources={sources} />}
+      {sources.length > 0 && <SourcesPanel sources={sources} unit={unit} />}
     </article>
   );
 }
 
-function SourcesPanel({ sources }: { sources: RetrievedChunk[] }) {
+function SourcesPanel({
+  sources,
+  unit,
+}: {
+  sources: RetrievedChunk[];
+  unit: { single: string; plural: string };
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-1">
@@ -289,7 +315,7 @@ function SourcesPanel({ sources }: { sources: RetrievedChunk[] }) {
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[0.65rem] font-medium text-[var(--accent)]">
                     {i + 1}
                   </span>
-                  <span className="smallcaps">Page {s.page}</span>
+                  <span className="smallcaps">{unit.single} {s.page}</span>
                 </span>
                 <span className="font-mono text-[0.7rem] text-[var(--ink-faint)] tabular-nums">
                   {s.score.toFixed(3)}
