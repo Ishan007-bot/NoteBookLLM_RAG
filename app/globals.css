@@ -186,10 +186,18 @@ body::after {
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
 
+/* Page-wide focus ring — applied to interactive elements but NOT to form
+   fields. Form fields (input, textarea, select) get their focus styling from
+   their wrapper card so we don't end up with two stacked outlines. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
 }
 
 /* ---------------------------------------------------------------------------

@@ -156,7 +156,7 @@ export function ChatView({ meta, onReset }: ChatViewProps) {
               }}
               placeholder={`Ask something about ${truncate(meta.filename, 40)} …`}
               rows={1}
-              className="min-h-[24px] flex-1 resize-none bg-transparent text-[0.95rem] leading-snug text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none"
+              className="min-h-[24px] flex-1 resize-none bg-transparent text-[0.95rem] leading-snug text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none focus-visible:outline-none focus-visible:[outline:none]"
               disabled={isBusy}
               // Opt out of writing-assistant browser extensions (Grammarly,
               // LanguageTool, ProWritingAid) that inject overlay badges and
