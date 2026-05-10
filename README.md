@@ -120,10 +120,16 @@ Open http://localhost:3000.
 
 ```env
 GROQ_API_KEY=        # https://console.groq.com/keys
+GROQ_API_KEY_2=      # optional backup, auto-rotated on 429 / quota errors
+GROQ_API_KEY_3=      # optional backup
 GOOGLE_API_KEY=      # https://aistudio.google.com/apikey
+GOOGLE_API_KEY_2=    # optional backup
+GOOGLE_API_KEY_3=    # optional backup
 QDRANT_URL=          # http://127.0.0.1:6333 for local, your cluster URL for cloud
 QDRANT_API_KEY=      # blank for local Docker, required for Qdrant Cloud
 ```
+
+**Key rotation**: when a Groq or Gemini key returns a 429 / quota / 401 error, the app rotates to the next configured backup key. State is per-process (in-memory) — on serverless platforms each instance maintains its own pointer. Add up to 5 keys per provider (`*_API_KEY`, `*_API_KEY_2`, ..., `*_API_KEY_5`).
 
 ## Deployment
 
