@@ -60,14 +60,6 @@ function SiteHeader({ inChat }: { inChat: boolean }) {
           )}
         </a>
         <nav className="flex items-center gap-5">
-          {!inChat && (
-            <a
-              href="#how-it-works"
-              className="smallcaps hidden transition-colors hover:text-[var(--ink)] sm:inline"
-            >
-              How it works
-            </a>
-          )}
           <a
             href="https://github.com/Ishan007-bot/NoteBookLLM_RAG"
             target="_blank"
