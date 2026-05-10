@@ -1,6 +1,6 @@
-# NotebookRAG — Chat with your PDFs
+# NotebookRAG — Chat with your documents
 
-A NotebookLM-style web app that lets you upload a PDF and ask questions about it. Answers are grounded in the document and cite specific page numbers — when the document doesn't contain an answer, the model says so explicitly instead of hallucinating.
+A NotebookLM-style web app that lets you upload a document (PDF, Word, text, markdown, or CSV) and ask questions about it. Answers are grounded in the document and cite specific page or row numbers — when the document doesn't contain an answer, the model says so explicitly instead of hallucinating.
 
 Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant vector DB, and the Vercel AI SDK.
 
@@ -8,7 +8,7 @@ Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant ve
 
 ## Features
 
-- **PDF upload** — drag-drop or click to upload, up to 25 MB
+- **Multi-format upload** — drag-drop or click. Supports `.pdf`, `.docx`, `.txt`, `.md`, `.csv` up to 25 MB
 - **Streaming chat** — token-by-token responses via Vercel AI SDK + Groq
 - **Page citations** — every answer cites the page numbers it relied on, e.g. `(Page 3)`
 - **Inline source viewer** — collapsible panel under each answer showing the retrieved chunks with similarity scores
@@ -24,7 +24,7 @@ Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant ve
 | LLM | `llama-3.3-70b-versatile` via Groq |
 | Embeddings | `gemini-embedding-001` (3072-dim) via Google AI Studio |
 | Vector DB | Qdrant (local Docker for dev, Qdrant Cloud for prod) |
-| PDF parsing | LangChain `WebPDFLoader` (buffer-based, serverless-safe) |
+| Document parsing | `WebPDFLoader` (PDF), `mammoth` (DOCX), native string ops (TXT/MD/CSV) — all buffer-based, serverless-safe |
 | Streaming | Vercel AI SDK v6 (`streamText` + `useChat`) |
 | Styling | Tailwind CSS v4 |
 
