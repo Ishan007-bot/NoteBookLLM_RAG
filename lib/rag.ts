@@ -1,9 +1,20 @@
 import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { QdrantClient } from "@qdrant/js-client-rest";
-import type { Document } from "@langchain/core/documents";
+import { Document } from "@langchain/core/documents";
+import mammoth from "mammoth";
 import type { RetrievedChunk } from "@/lib/types";
 import { getGoogleKey, rotateGoogleKey, googleKeyCount } from "@/lib/api-keys";
+
+export const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"] as const;
+export type SupportedExtension = (typeof SUPPORTED_EXTENSIONS)[number];
+
+export function getExtension(filename: string): SupportedExtension | null {
+  const m = filename.toLowerCase().match(/\.([a-z0-9]+)$/);
+  if (!m) return null;
+  const ext = m[1] as SupportedExtension;
+  return SUPPORTED_EXTENSIONS.includes(ext) ? ext : null;
+}
 
 // Chunking strategy: RecursiveCharacterTextSplitter
 //   - chunkSize 1000 chars: large enough to preserve local context (a paragraph or two),
@@ -49,33 +60,47 @@ function geminiUrl(endpoint: "embedContent" | "batchEmbedContents", apiKey: stri
 
 // Call Gemini with key rotation + exponential backoff.
 //   1. Try current key with up to 3 attempts (backoff 2s/4s/8s, capped 30s).
+//      Network-level errors (DNS, connection reset, etc.) are also retried.
 //   2. On persistent 429/503, rotate to the next configured key and try again.
-//   3. After all keys cycle through, return the last response (caller decides).
+//   3. After all keys cycle through, return the last response or throw the last
+//      network error.
 async function fetchGeminiWithRotation(
   endpoint: "embedContent" | "batchEmbedContents",
   init: RequestInit
 ): Promise<Response> {
   const totalKeys = Math.max(1, googleKeyCount());
   let lastResponse: Response | null = null;
+  let lastNetworkError: unknown = null;
 
   for (let keyAttempt = 0; keyAttempt < totalKeys; keyAttempt++) {
     const apiKey = getGoogleKey();
     const url = geminiUrl(endpoint, apiKey);
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch(url, init);
-      lastResponse = res;
-      if (res.status === 200) return res;
-      // Non-quota errors (4xx other than 429, or 5xx other than 503) — return now,
-      // rotation won't help for these.
-      if (res.status !== 429 && res.status !== 503) return res;
+      try {
+        const res = await fetch(url, init);
+        lastResponse = res;
+        if (res.status === 200) return res;
+        // Non-quota errors (4xx other than 429, or 5xx other than 503) —
+        // return now, rotation won't help for these.
+        if (res.status !== 429 && res.status !== 503) return res;
 
-      if (attempt < 2) {
-        const retryAfter = Number(res.headers.get("retry-after"));
-        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, 30000)
-          : Math.min(2000 * 2 ** attempt, 30000);
-        await sleep(backoffMs);
+        if (attempt < 2) {
+          const retryAfter = Number(res.headers.get("retry-after"));
+          const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 30000)
+            : Math.min(2000 * 2 ** attempt, 30000);
+          await sleep(backoffMs);
+        }
+      } catch (e) {
+        // Network-level failure (DNS lookup, connection reset, socket hangup).
+        // These are transient — retry with the same backoff schedule. The fetch
+        // promise rejects with a TypeError whose `cause` carries the underlying
+        // error (e.g. EAI_AGAIN, ECONNRESET).
+        lastNetworkError = e;
+        if (attempt < 2) {
+          await sleep(Math.min(2000 * 2 ** attempt, 30000));
+        }
       }
     }
 
@@ -83,7 +108,10 @@ async function fetchGeminiWithRotation(
     if (rotateGoogleKey() === null) break;
   }
 
-  return lastResponse!;
+  if (lastResponse) return lastResponse;
+  // Never received any HTTP response across all keys/attempts — surface the
+  // network error.
+  throw lastNetworkError ?? new Error("Gemini request failed with no response");
 }
 
 // Embed a single chunk via Gemini's embedContent endpoint.
@@ -144,11 +172,62 @@ function getPageNumber(metadata: ChunkMetadata): number {
   return metadata.loc?.pageNumber ?? 0;
 }
 
-export async function loadAndChunkPdf(
-  blob: Blob
-): Promise<{ chunks: Document[]; pages: number }> {
-  const loader = new WebPDFLoader(blob, { splitPages: true });
-  const pageDocs = await loader.load();
+// Dispatch to the right loader based on file extension. Returns "page" docs
+// (one Document per logical page or section) so chunks inherit a page metadata.
+async function loadDocs(blob: Blob, ext: SupportedExtension): Promise<Document[]> {
+  switch (ext) {
+    case "pdf": {
+      const loader = new WebPDFLoader(blob, { splitPages: true });
+      return loader.load();
+    }
+    case "txt":
+    case "md": {
+      const text = await blob.text();
+      // Plain-text docs have no native page boundary. Treat the whole file as
+      // one logical "page 1" — chunking will still produce many retrieval units.
+      return [new Document({ pageContent: text, metadata: { loc: { pageNumber: 1 } } })];
+    }
+    case "csv": {
+      const text = await blob.text();
+      // Treat each row as its own "page" so retrievals can cite a row number.
+      // Keep the header on every row so chunks remain interpretable when read
+      // alone. Skip empty trailing lines.
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length === 0) return [];
+      const header = lines[0];
+      const rows = lines.slice(1);
+      if (rows.length === 0) {
+        // Single-line CSV (just the header) — still index it.
+        return [new Document({ pageContent: header, metadata: { loc: { pageNumber: 1 } } })];
+      }
+      return rows.map(
+        (row, i) =>
+          new Document({
+            pageContent: `${header}\n${row}`,
+            metadata: { loc: { pageNumber: i + 2 } }, // header is row 1
+          })
+      );
+    }
+    case "docx": {
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      const { value: text } = await mammoth.extractRawText({ buffer });
+      // .docx has no page metadata in its XML — page boundaries are layout-time.
+      // Use one logical "page 1" for the whole doc.
+      return [new Document({ pageContent: text, metadata: { loc: { pageNumber: 1 } } })];
+    }
+  }
+}
+
+export async function loadAndChunkDocument(
+  blob: Blob,
+  filename: string
+): Promise<{ chunks: Document[]; pages: number; extension: SupportedExtension }> {
+  const ext = getExtension(filename);
+  if (!ext) {
+    throw new Error(`Unsupported file type. Supported: ${SUPPORTED_EXTENSIONS.join(", ")}`);
+  }
+
+  const pageDocs = await loadDocs(blob, ext);
 
   const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: CHUNK_SIZE,
@@ -160,7 +239,7 @@ export async function loadAndChunkPdf(
   // OCR artifacts) — Gemini rejects empty content.
   const chunks = rawChunks.filter((c) => c.pageContent.trim().length > 0);
 
-  return { chunks, pages: pageDocs.length };
+  return { chunks, pages: pageDocs.length, extension: ext };
 }
 
 export async function indexChunks(chunks: Document[], collectionName: string): Promise<void> {
@@ -172,8 +251,11 @@ export async function indexChunks(chunks: Document[], collectionName: string): P
   const INTER_BATCH_DELAY_MS = 1500;
   const INTER_SINGLE_DELAY_MS = 700;
   const records: { content: string; page: number; vector: number[] }[] = [];
+  const errorSamples: string[] = [];
   let dim = 0;
   let skipped = 0;
+
+  console.log(`[indexChunks] starting: ${chunks.length} chunks, ${googleKeyCount()} Google key(s) configured`);
 
   for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
     if (i > 0) await sleep(INTER_BATCH_DELAY_MS);
@@ -200,6 +282,7 @@ export async function indexChunks(chunks: Document[], collectionName: string): P
         } catch (e) {
           skipped += 1;
           const msg = e instanceof Error ? e.message : String(e);
+          if (errorSamples.length < 3) errorSamples.push(msg);
           console.warn(`[indexChunks] skipped chunk (page ${getPageNumber(chunk.metadata as ChunkMetadata)}): ${msg}`);
           continue;
         }
@@ -214,7 +297,8 @@ export async function indexChunks(chunks: Document[], collectionName: string): P
   }
 
   if (records.length === 0) {
-    throw new Error("All chunks failed to embed");
+    const sample = errorSamples[0] ?? "no embed errors captured";
+    throw new Error(`All ${chunks.length} chunks failed to embed. Sample error: ${sample}`);
   }
   if (skipped > 0) {
     console.warn(`[indexChunks] skipped ${skipped}/${chunks.length} chunks; indexing ${records.length}`);
