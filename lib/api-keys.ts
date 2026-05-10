@@ -1,9 +1,10 @@
 // Multi-key support for Gemini and Groq.
-// Reads `<PROVIDER>_API_KEY`, `<PROVIDER>_API_KEY_2`, `<PROVIDER>_API_KEY_3` from
-// the environment and rotates to the next non-exhausted key when one returns
-// quota / rate-limit errors. State is in-memory per server instance — on a
-// serverless platform the process restarts often, but for a single conversation
-// the rotation persists.
+// Reads `<PROVIDER>_API_KEY`, `<PROVIDER>_API_KEY_2`, ..., `<PROVIDER>_API_KEY_5`
+// from the environment on every call (so changes to .env.local take effect on
+// the next request without restarting the dev server) and rotates to the next
+// non-exhausted key when one returns quota / rate-limit errors.
+//
+// Rotation pointers are kept in memory per server instance.
 
 function readKeys(prefix: string): string[] {
   const keys: string[] = [];
@@ -16,46 +17,58 @@ function readKeys(prefix: string): string[] {
   return keys;
 }
 
-const GROQ_KEYS = readKeys("GROQ_API_KEY");
-const GOOGLE_KEYS = readKeys("GOOGLE_API_KEY");
-
 let groqIdx = 0;
 let googleIdx = 0;
 
+function getKeys(prefix: "GROQ_API_KEY" | "GOOGLE_API_KEY"): string[] {
+  return readKeys(prefix);
+}
+
 export function getGroqKey(): string {
-  if (GROQ_KEYS.length === 0) {
+  const keys = getKeys("GROQ_API_KEY");
+  if (keys.length === 0) {
     throw new Error("No GROQ_API_KEY configured");
   }
-  return GROQ_KEYS[groqIdx];
+  // Clamp index in case keys were removed at runtime.
+  if (groqIdx >= keys.length) groqIdx = 0;
+  return keys[groqIdx];
 }
 
 export function rotateGroqKey(): string | null {
-  if (groqIdx + 1 >= GROQ_KEYS.length) {
-    console.warn(`[api-keys] all ${GROQ_KEYS.length} Groq keys exhausted`);
+  const keys = getKeys("GROQ_API_KEY");
+  if (groqIdx + 1 >= keys.length) {
+    console.warn(`[api-keys] all ${keys.length} Groq keys exhausted`);
     return null;
   }
   groqIdx += 1;
-  console.warn(`[api-keys] rotated Groq to key ${groqIdx + 1}/${GROQ_KEYS.length}`);
-  return GROQ_KEYS[groqIdx];
+  console.warn(`[api-keys] rotated Groq to key ${groqIdx + 1}/${keys.length}`);
+  return keys[groqIdx];
 }
 
 export function getGoogleKey(): string {
-  if (GOOGLE_KEYS.length === 0) {
+  const keys = getKeys("GOOGLE_API_KEY");
+  if (keys.length === 0) {
     throw new Error("No GOOGLE_API_KEY configured");
   }
-  return GOOGLE_KEYS[googleIdx];
+  if (googleIdx >= keys.length) googleIdx = 0;
+  return keys[googleIdx];
 }
 
 export function rotateGoogleKey(): string | null {
-  if (googleIdx + 1 >= GOOGLE_KEYS.length) {
-    console.warn(`[api-keys] all ${GOOGLE_KEYS.length} Google keys exhausted`);
+  const keys = getKeys("GOOGLE_API_KEY");
+  if (googleIdx + 1 >= keys.length) {
+    console.warn(`[api-keys] all ${keys.length} Google keys exhausted`);
     return null;
   }
   googleIdx += 1;
-  console.warn(`[api-keys] rotated Google to key ${googleIdx + 1}/${GOOGLE_KEYS.length}`);
-  return GOOGLE_KEYS[googleIdx];
+  console.warn(`[api-keys] rotated Google to key ${googleIdx + 1}/${keys.length}`);
+  return keys[googleIdx];
 }
 
 export function googleKeyCount(): number {
-  return GOOGLE_KEYS.length;
+  return getKeys("GOOGLE_API_KEY").length;
+}
+
+export function groqKeyCount(): number {
+  return getKeys("GROQ_API_KEY").length;
 }
