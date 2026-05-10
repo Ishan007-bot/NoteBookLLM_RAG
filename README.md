@@ -16,7 +16,6 @@ Built with Next.js 16, Groq (Llama-3.3-70B), Google Gemini embeddings, Qdrant ve
 - **Inline source viewer** — collapsible panel under each answer showing the retrieved chunks with similarity scores
 - **Strict grounding** — refuses to answer questions not covered by the document (returns `"The document does not cover this."` instead of guessing)
 - **Per-session isolation** — each upload gets a unique session ID and Qdrant collection so different documents don't cross-contaminate
-- **Editorial UI** — Fraunces serif headlines, custom typographic ornaments, atmospheric background gradients, blinking caret while streaming, refined hover/focus states
 
 ## Tech stack
 
