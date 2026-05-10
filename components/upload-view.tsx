@@ -7,14 +7,14 @@ interface UploadViewProps {
   onUploaded: (meta: UploadResponse) => void;
 }
 
+const ACCEPTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"];
+
 export function UploadView({ onUploaded }: UploadViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState<string>("");
-
-  const ACCEPTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"];
 
   async function handleFile(file: File) {
     setError(null);
@@ -24,12 +24,19 @@ export function UploadView({ onUploaded }: UploadViewProps) {
       return;
     }
     setUploading(true);
-    setProgressMsg("Uploading & indexing — this can take 10-60 seconds for large documents…");
+    setProgressMsg("Reading & chunking the document …");
 
     try {
+      // Show evolving progress copy so a multi-second wait doesn't feel dead.
+      const t1 = setTimeout(() => setProgressMsg("Embedding chunks with Gemini …"), 2500);
+      const t2 = setTimeout(() => setProgressMsg("Indexing in Qdrant …"), 8000);
+      const t3 = setTimeout(() => setProgressMsg("Almost there — finalising …"), 15000);
+
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+
       const data: UploadResponse | { error: string } = await res.json();
       if (!res.ok || "error" in data) {
         const msg = "error" in data ? data.error : `Upload failed (${res.status})`;
@@ -45,56 +52,42 @@ export function UploadView({ onUploaded }: UploadViewProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-      <div className="w-full max-w-xl text-center">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Chat with your document
-        </h1>
-        <p className="mt-3 text-sm text-[--color-muted-foreground] sm:text-base">
-          Upload a PDF, Word doc, text file, or CSV and ask questions about it. Answers are grounded in the document with page citations — no hallucinations.
-        </p>
+    <section className="flex flex-1 flex-col">
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-16 sm:px-10 sm:py-24">
+        <div className="stagger flex flex-col gap-10">
+          {/* Eyebrow */}
+          <p className="smallcaps">
+            <span className="text-[var(--accent)]">●</span>&nbsp;&nbsp;Document Q&amp;A · grounded · cited
+          </p>
 
-        <label
-          htmlFor="pdf-input"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const file = e.dataTransfer.files?.[0];
-            if (file && !uploading) handleFile(file);
-          }}
-          className={`mt-8 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 transition-colors ${
-            dragOver
-              ? "border-[--color-accent] bg-[--color-muted]"
-              : "border-[--color-border] hover:bg-[--color-muted]"
-          } ${uploading ? "pointer-events-none opacity-60" : ""}`}
-        >
-          <svg
-            className="h-10 w-10 text-[--color-muted-foreground]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 13.5V21M9 21l-3-3m3 3l3-3M3 16.5V7.125c0-1.036.84-1.875 1.875-1.875h6.198c.46 0 .904.171 1.247.476l3.527 3.135c.357.317.86.514 1.39.514h2.888c1.035 0 1.875.84 1.875 1.875V16.5"
-            />
-          </svg>
-          <span className="mt-3 text-sm font-medium">
-            {uploading ? "Processing…" : "Drop a file here, or click to choose"}
-          </span>
-          <span className="mt-1 text-xs text-[--color-muted-foreground]">
-            PDF, DOCX, TXT, MD, CSV · max 25 MB
-          </span>
+          {/* Headline */}
+          <h1 className="display-headline text-[clamp(2.5rem,6vw,4.25rem)] text-[var(--ink)]">
+            Read with{" "}
+            <span className="italic text-[var(--accent)]">precision.</span>
+            <br />
+            Ask anything.
+          </h1>
+
+          <p className="max-w-xl text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
+            Upload a PDF, Word doc, text file, or spreadsheet. NotebookRAG indexes it page by page and answers your questions using only what&rsquo;s actually written — every claim cites the page it came from. If the document doesn&rsquo;t cover something, it says so plainly.
+          </p>
+
+          {/* Drop zone */}
+          <DropZone
+            uploading={uploading}
+            dragOver={dragOver}
+            onDragOver={() => setDragOver(true)}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(file) => {
+              setDragOver(false);
+              if (!uploading) handleFile(file);
+            }}
+            onPick={() => inputRef.current?.click()}
+          />
+
+          {/* Hidden input */}
           <input
             ref={inputRef}
-            id="pdf-input"
             type="file"
             accept=".pdf,.docx,.txt,.md,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv"
             className="hidden"
@@ -105,17 +98,178 @@ export function UploadView({ onUploaded }: UploadViewProps) {
               e.target.value = "";
             }}
           />
-        </label>
 
-        {progressMsg && (
-          <p className="mt-4 text-sm text-[--color-muted-foreground]">{progressMsg}</p>
-        )}
-        {error && (
-          <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-200">
-            {error}
-          </p>
-        )}
+          {/* Status / errors */}
+          <div aria-live="polite" className="min-h-[1.5rem]">
+            {progressMsg && (
+              <p className="fade-in flex items-center gap-2 text-sm text-[var(--ink-soft)]">
+                <span className="thinking-dots inline-flex">
+                  <span /><span /><span />
+                </span>
+                {progressMsg}
+              </p>
+            )}
+            {error && (
+              <p className="rise-soft rounded-md border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
+                {error}
+              </p>
+            )}
+          </div>
+
+          {/* Three principles — tasteful trust signals */}
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--rule)] bg-[var(--rule)] sm:grid-cols-3">
+            <Principle
+              tag="01"
+              title="Grounded"
+              body="Answers are pulled from your document. No outside knowledge bleeds in."
+            />
+            <Principle
+              tag="02"
+              title="Cited"
+              body="Every answer references the exact page or row it relied on."
+            />
+            <Principle
+              tag="03"
+              title="Honest"
+              body="If the document doesn&rsquo;t cover it, the model says so — never guesses."
+            />
+          </div>
+        </div>
       </div>
+    </section>
+  );
+}
+
+function DropZone({
+  uploading,
+  dragOver,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onPick,
+}: {
+  uploading: boolean;
+  dragOver: boolean;
+  onDragOver: () => void;
+  onDragLeave: () => void;
+  onDrop: (file: File) => void;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={uploading}
+      onClick={onPick}
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragOver();
+      }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (file) onDrop(file);
+      }}
+      className={`group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-2xl border border-dashed px-8 py-14 text-center transition-all duration-300 ${
+        dragOver
+          ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+          : "border-[var(--rule)] bg-[var(--paper-deep)] hover:border-[var(--ink-faint)]"
+      } ${uploading ? "pointer-events-none opacity-70" : "cursor-pointer"}`}
+    >
+      {/* Decorative corner ticks — Swiss design tic */}
+      <CornerTicks />
+
+      {/* Document glyph — custom, not a generic upload arrow */}
+      <DocumentMark active={dragOver || uploading} />
+
+      <div className="flex flex-col items-center gap-1">
+        <span className="font-display text-xl text-[var(--ink)]">
+          {uploading
+            ? "Working …"
+            : dragOver
+              ? "Drop to upload"
+              : "Drop a document here"}
+        </span>
+        <span className="text-sm text-[var(--ink-faint)]">
+          or <span className="underline decoration-[var(--ink-faint)] decoration-dotted underline-offset-4 group-hover:text-[var(--accent)] group-hover:decoration-[var(--accent)]">click to browse</span>
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[0.7rem] uppercase tracking-[0.14em] text-[var(--ink-faint)]">
+        {ACCEPTED_EXTENSIONS.map((ext, i) => (
+          <span key={ext} className="flex items-center gap-3">
+            <span className="font-mono">.{ext}</span>
+            {i < ACCEPTED_EXTENSIONS.length - 1 && (
+              <span className="h-1 w-1 rounded-full bg-[var(--rule)]" aria-hidden />
+            )}
+          </span>
+        ))}
+        <span className="ml-1 text-[var(--ink-faint)]">· max 25 MB</span>
+      </div>
+    </button>
+  );
+}
+
+function CornerTicks() {
+  return (
+    <>
+      <span className="absolute left-3 top-3 h-3 w-3 border-l border-t border-[var(--ink-faint)]" />
+      <span className="absolute right-3 top-3 h-3 w-3 border-r border-t border-[var(--ink-faint)]" />
+      <span className="absolute bottom-3 left-3 h-3 w-3 border-b border-l border-[var(--ink-faint)]" />
+      <span className="absolute bottom-3 right-3 h-3 w-3 border-b border-r border-[var(--ink-faint)]" />
+    </>
+  );
+}
+
+function DocumentMark({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="44"
+      height="52"
+      viewBox="0 0 44 52"
+      fill="none"
+      className={`transition-transform duration-500 ${active ? "scale-110" : ""}`}
+      aria-hidden
+    >
+      {/* Back doc */}
+      <rect
+        x="6"
+        y="2"
+        width="28"
+        height="36"
+        rx="2"
+        className="stroke-[var(--ink-faint)]"
+        strokeWidth="1.25"
+      />
+      {/* Front doc */}
+      <rect
+        x="11"
+        y="11"
+        width="28"
+        height="38"
+        rx="2"
+        fill="var(--paper)"
+        className="stroke-[var(--ink)]"
+        strokeWidth="1.25"
+      />
+      {/* Lines */}
+      <line x1="17" y1="22" x2="33" y2="22" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+      <line x1="17" y1="28" x2="33" y2="28" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+      <line x1="17" y1="34" x2="27" y2="34" className="stroke-[var(--ink-faint)]" strokeWidth="1" />
+      {/* Accent dot */}
+      <circle cx="33" cy="42" r="3" fill="var(--accent)" />
+    </svg>
+  );
+}
+
+function Principle({ tag, title, body }: { tag: string; title: string; body: string }) {
+  return (
+    <div className="flex flex-col gap-2 bg-[var(--paper)] p-6">
+      <div className="flex items-baseline gap-3">
+        <span className="font-mono text-[0.7rem] text-[var(--ink-faint)]">{tag}</span>
+        <span className="font-display text-base text-[var(--ink)]">{title}</span>
+      </div>
+      <p className="text-sm leading-relaxed text-[var(--ink-soft)]">{body}</p>
     </div>
   );
 }

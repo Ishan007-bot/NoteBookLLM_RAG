@@ -1,38 +1,312 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --border: #e4e4e7;
-  --accent: #2563eb;
-}
+/* ---------------------------------------------------------------------------
+ * Design tokens
+ * Editorial / scholarly direction: warm cream paper, deep oxidised green
+ * accent, ink-dark text. The palette is asymmetric on purpose — one strong
+ * accent against quiet neutrals.
+ * ------------------------------------------------------------------------- */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  /* Surfaces */
+  --paper:       #faf8f2;  /* warm cream, the dominant ground */
+  --paper-deep:  #f3f0e4;  /* slightly recessed surface */
+  --ink:         #1a1814;  /* warm near-black, primary text */
+  --ink-soft:    #4a4640;  /* secondary text */
+  --ink-faint:   #84807a;  /* tertiary text / metadata */
+  --rule:        #e5e1d3;  /* hairline borders */
+  --rule-soft:   #ede9dc;  /* even fainter rule */
+
+  /* Single chromatic accent — deep oxidised green, like aged copper */
+  --accent:      #2d4a3e;
+  --accent-hover: #3a5e4f;
+  --accent-soft: #d8e2db;  /* tint for muted backgrounds */
+  --accent-ink:  #faf8f2;  /* text on accent surfaces */
+
+  /* Functional */
+  --danger:      #8b2f1a;
+  --danger-soft: #f3dcd2;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --muted: #18181b;
-    --muted-foreground: #a1a1aa;
-    --border: #27272a;
-    --accent: #3b82f6;
+    --paper:       #14130f;
+    --paper-deep:  #1c1a16;
+    --ink:         #ece9dd;
+    --ink-soft:    #b8b3a5;
+    --ink-faint:   #837e72;
+    --rule:        #2c2a23;
+    --rule-soft:   #221f1a;
+
+    --accent:      #6b9b7e;
+    --accent-hover: #84b497;
+    --accent-soft: #1f2a25;
+    --accent-ink:  #14130f;
+
+    --danger:      #d97553;
+    --danger-soft: #2a1c16;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base layer
+ * ------------------------------------------------------------------------- */
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  /* Subtle paper grain — barely perceptible noise overlay so flat colours feel
+     like material rather than pixels. SVG inlined to avoid a network request. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.08  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-attachment: fixed;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.92  0 0 0 0 0.85  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Custom scrollbar — narrow, ink-coloured, fading */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
+
+/* Focus state — subtle but unmistakable */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Typographic utilities
+ * ------------------------------------------------------------------------- */
+
+.font-display { font-family: var(--font-fraunces), ui-serif, Georgia, serif; font-feature-settings: "ss01", "ss02"; }
+.font-sans { font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif; }
+.font-mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
+
+/* Smallcaps — for category labels, metadata. Letterspaced. */
+.smallcaps {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
+
+/* Display headline — Fraunces with optical sizing for hero */
+.display-headline {
+  font-family: var(--font-fraunces), serif;
+  font-weight: 400;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  letter-spacing: -0.018em;
+  line-height: 1.02;
+}
+
+/* Tabular figures for numbers in metadata */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion primitives
+ * ------------------------------------------------------------------------- */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes rise-soft {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes caret-blink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -120% 0; }
+  100% { background-position: 220% 0; }
+}
+
+.rise { animation: rise 0.6s var(--ease-out) both; }
+.rise-soft { animation: rise-soft 0.4s var(--ease-out) both; }
+.fade-in { animation: fade 0.5s var(--ease-out) both; }
+
+/* Stagger children: each direct child animates in slightly after the previous.
+   Apply to a wrapper. */
+.stagger > *               { animation: rise 0.55s var(--ease-out) both; }
+.stagger > *:nth-child(1)  { animation-delay: 0.00s; }
+.stagger > *:nth-child(2)  { animation-delay: 0.08s; }
+.stagger > *:nth-child(3)  { animation-delay: 0.16s; }
+.stagger > *:nth-child(4)  { animation-delay: 0.24s; }
+.stagger > *:nth-child(5)  { animation-delay: 0.32s; }
+.stagger > *:nth-child(6)  { animation-delay: 0.40s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .rise-soft, .fade-in,
+  .stagger > * { animation: none !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Streaming caret — drawn as a filled rectangle that blinks */
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  background: var(--accent);
+  animation: caret-blink 1.05s steps(1) infinite;
+}
+
+/* "Thinking" three-dot indicator */
+.thinking-dots span {
+  display: inline-block;
+  width: 5px; height: 5px;
+  margin-right: 4px;
+  background: var(--ink-faint);
+  border-radius: 999px;
+  animation: pulse-soft 1.4s var(--ease-in-out) infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.18s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.36s; }
+
+/* Shimmer for loading skeleton text */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--rule-soft) 0%,
+    var(--rule) 50%,
+    var(--rule-soft) 100%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Components — small reusable bits expressed as classes for readability
+ * ------------------------------------------------------------------------- */
+
+/* Hairline rule with end caps (a typographic detail you don't normally see) */
+.rule-fancy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink-faint);
+}
+.rule-fancy::before, .rule-fancy::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+/* Pill button — primary */
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 0.625rem 1.125rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background 200ms var(--ease-out), transform 120ms var(--ease-out);
+  border: 1px solid var(--accent);
+}
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 0.5rem 0.875rem;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--rule);
+  transition: background 200ms var(--ease-out), border-color 200ms var(--ease-out);
+}
+.btn-ghost:hover { background: var(--paper-deep); border-color: var(--ink-faint); }
+
+/* Decorative ornament — used as a separator near brand mark */
+.ornament {
+  display: inline-block;
+  width: 4px; height: 4px;
+  background: var(--accent);
+  border-radius: 999px;
+  vertical-align: middle;
+  margin: 0 10px;
 }
