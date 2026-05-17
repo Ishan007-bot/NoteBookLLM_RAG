@@ -3,8 +3,17 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import { Document } from "@langchain/core/documents";
 import { extractText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
+import { generateText } from "ai";
+import { createGroq } from "@ai-sdk/groq";
 import type { RetrievedChunk } from "@/lib/types";
-import { getGoogleKey, rotateGoogleKey, googleKeyCount } from "@/lib/api-keys";
+import {
+  getGoogleKey,
+  rotateGoogleKey,
+  googleKeyCount,
+  getGroqKey,
+  rotateGroqKey,
+  groqKeyCount,
+} from "@/lib/api-keys";
 
 export const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md", "csv", "docx"] as const;
 export type SupportedExtension = (typeof SUPPORTED_EXTENSIONS)[number];
@@ -29,6 +38,15 @@ const CHUNK_OVERLAP = 200;
 const TOP_K = 4;
 const EMBEDDING_MODEL = "gemini-embedding-001";
 const UPSERT_BATCH_SIZE = 64;
+
+// Reranker pulls a wider candidate set from Qdrant, then an LLM scores each
+// chunk for actual answer-ability against the query. Cosine similarity over
+// embeddings is a coarse proxy for relevance; the reranker reads each chunk
+// against the question and catches near-misses (topically similar but not
+// answering) that vector search ranks too high.
+const RERANK_CANDIDATES = 8;
+const RERANK_MODEL = "llama-3.1-8b-instant";
+const RERANK_CONTENT_PREVIEW = 800;
 
 interface ChunkMetadata {
   loc?: { pageNumber?: number };
@@ -337,12 +355,16 @@ export async function retrieveContext(
 ): Promise<RetrievedChunk[]> {
   const vector = await embedSingle(query, "RETRIEVAL_QUERY");
   const client = getQdrantClient();
+  // Pull a wider candidate set than we ultimately use so the reranker has
+  // something to filter. If the collection has fewer than RERANK_CANDIDATES
+  // points, Qdrant just returns what it has.
+  const candidateLimit = Math.max(k, RERANK_CANDIDATES);
   const results = await client.search(collectionName, {
     vector,
-    limit: k,
+    limit: candidateLimit,
     with_payload: true,
   });
-  return results.map((r) => {
+  const candidates: RetrievedChunk[] = results.map((r) => {
     const payload = (r.payload ?? {}) as Partial<QdrantPayload>;
     return {
       content: payload.content ?? "",
@@ -350,6 +372,81 @@ export async function retrieveContext(
       score: r.score ?? 0,
     };
   });
+
+  if (candidates.length <= k) return candidates;
+  return rerankChunks(query, candidates, k);
+}
+
+// LLM-based reranker. Asks a small fast Groq model to score each candidate
+// 0-10 for how well it actually answers the query, then keeps the top-K by
+// that score. Falls back to vector-similarity order if the reranker call or
+// JSON parsing fails — reranking is an optimisation, never a hard dependency.
+async function rerankChunks(
+  query: string,
+  candidates: RetrievedChunk[],
+  k: number
+): Promise<RetrievedChunk[]> {
+  const numbered = candidates
+    .map(
+      (c, i) =>
+        `[Chunk ${i}]\n${c.content.slice(0, RERANK_CONTENT_PREVIEW)}`
+    )
+    .join("\n\n---\n\n");
+
+  const prompt = `You are a relevance scorer for a document Q&A system. Score each chunk from 0 to 10 for how well it directly answers the question. 10 = chunk contains the answer. 5 = chunk is topically related but does not answer. 0 = chunk is irrelevant.
+
+Question: ${query}
+
+Chunks:
+${numbered}
+
+Return ONLY a JSON array, no prose, no markdown fences. Format: [{"index": 0, "score": 8}, {"index": 1, "score": 3}, ...]. Include every chunk exactly once.`;
+
+  const totalKeys = Math.max(1, groqKeyCount());
+  let lastError: unknown = null;
+
+  for (let keyAttempt = 0; keyAttempt < totalKeys; keyAttempt++) {
+    try {
+      const groq = createGroq({ apiKey: getGroqKey() });
+      const { text } = await generateText({
+        model: groq(RERANK_MODEL),
+        prompt,
+        temperature: 0,
+      });
+
+      const match = text.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error("no JSON array in rerank response");
+      const parsed = JSON.parse(match[0]) as { index: number; score: number }[];
+
+      const ranked = parsed
+        .filter(
+          (s) =>
+            Number.isFinite(s.index) &&
+            Number.isFinite(s.score) &&
+            s.index >= 0 &&
+            s.index < candidates.length
+        )
+        .sort((a, b) => b.score - a.score)
+        .slice(0, k)
+        .map((s) => candidates[s.index]);
+
+      if (ranked.length === 0) throw new Error("reranker returned no valid entries");
+      return ranked;
+    } catch (e) {
+      lastError = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      // Only rotate on quota/auth errors. Parse or other errors won't be fixed
+      // by switching keys — bail to fallback immediately.
+      if (!/(429|rate.?limit|quota|401|invalid.?api.?key)/i.test(msg)) break;
+      if (rotateGroqKey() === null) break;
+    }
+  }
+
+  console.warn(
+    "[rerank] failed, falling back to vector order:",
+    lastError instanceof Error ? lastError.message : String(lastError)
+  );
+  return candidates.slice(0, k);
 }
 
 export function buildSystemPrompt(chunks: RetrievedChunk[], unit: string = "Page"): string {
